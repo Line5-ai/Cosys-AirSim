@@ -12,7 +12,7 @@
 #include "common/AirSimSettings.hpp"
 #include "AssetRegistry/AssetData.h"
 #include "common/ClockFactory.hpp"
-#include "Engine/Light.h"
+#include "engine/Light.h"
 #include "api/ApiServerBase.hpp"
 #include "api/ApiProvider.hpp"
 #include "PawnSimApi.h"

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Trivial change to force recompile
+
 #include "AirBlueprintLib.h"
 #include "GameFramework/WorldSettings.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -30,6 +32,38 @@
 #include "DetectionComponent.h"
 #include "Components/LineBatchComponent.h"
 #include "CineCameraComponent.h"
+#include "TakeoffTask.h"
+#include "MoveToZTask.h"
+#include "RotateToYawTask.h"
+#include "MoveToPositionTask.h"
+#include "common/AirSimSettings.hpp"
+
+using namespace msr::airlib;
+
+//This is required for the rpclib to be included correctly
+#include "common/common_utils/StrictMode.hpp"
+STRICT_MODE_OFF
+#ifndef RPCLIB_MSGPACK
+#define RPCLIB_MSGPACK clmdep_msgpack
+#endif // !RPCLIB_MSGPACK
+
+#ifdef nil
+#undef nil
+#endif // nil
+
+#include "common/common_utils/WindowsApisCommonPre.hpp"
+#undef FLOAT
+#undef check
+#include "rpc/client.h"
+#include "rpc/rpc_error.h"
+#ifndef check
+#define check(expr) (static_cast<void>((expr)))
+#endif
+#include "common/common_utils/WindowsApisCommonPost.hpp"
+
+STRICT_MODE_ON
+
+#include "vehicles/multirotor/api/MultirotorRpcLibClient.hpp"
 
 /*
 //TODO: change naming conventions to same as other files?
@@ -320,15 +354,39 @@ void UAirBlueprintLib::enableViewportRendering(AActor* context, bool enable)
     }
 }
 
+std::unique_ptr<msr::airlib::MultirotorRpcLibClient> UAirBlueprintLib::AirSimClient;
+
+msr::airlib::MultirotorRpcLibClient* UAirBlueprintLib::GetClient()
+{
+    if (!AirSimClient)
+    {
+        // On the first call, create and connect the client.
+        AirSimClient.reset(new msr::airlib::MultirotorRpcLibClient());
+        AirSimClient->confirmConnection();
+    }
+    return AirSimClient.get();
+}
+
+FString UAirBlueprintLib::getDebugString()
+{
+    return FString(TEXT("This is a debug string."));
+}
+
 void UAirBlueprintLib::OnBeginPlay()
 {
+    // This function is likely not being called for a UBlueprintFunctionLibrary.
+    // The client and transform initialization is now handled in their respective Get() methods.
+    if (AirSimSettings::singleton().simmode_name != "Multirotor") {
+        return;
+    }
+
     image_wrapper_module_ = &FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
 }
 
 void UAirBlueprintLib::OnEndPlay()
 {
-    //nothing to do for now
     image_wrapper_module_ = nullptr;
+    AirSimClient.reset(); // Still good to clean up on end play if it's called.
 }
 
 IImageWrapperModule* UAirBlueprintLib::getImageWrapperModule()
@@ -938,6 +996,56 @@ bool UAirBlueprintLib::GetLastObstaclePosition(const AActor* actor, const FVecto
         hit = hits.Last(0);
 
     return has_hit;
+}
+
+void UAirBlueprintLib::moveToPosition(UObject* WorldContextObject, const FVector& position, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo)
+{
+    if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
+    {
+        float world_to_meters = GetWorldToMetersScale(World->GetWorldSettings());
+        FLatentActionManager& LatentActionManager = World->GetLatentActionManager();
+        if (LatentActionManager.FindExistingAction<FMoveToPositionTask>(LatentInfo.CallbackTarget, LatentInfo.UUID) == NULL)
+        {
+            LatentActionManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, new FMoveToPositionTask(LatentInfo, position, velocity, timeout_sec, VehicleName, Branches, world_to_meters));
+        }
+    }
+}
+
+void UAirBlueprintLib::rotateToYaw(UObject* WorldContextObject, float yaw, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo)
+{
+    if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
+    {
+        FLatentActionManager& LatentActionManager = World->GetLatentActionManager();
+        if (LatentActionManager.FindExistingAction<FRotateToYawTask>(LatentInfo.CallbackTarget, LatentInfo.UUID) == NULL)
+        {
+            LatentActionManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, new FRotateToYawTask(LatentInfo, yaw, timeout_sec, VehicleName, Branches));
+        }
+    }
+}
+
+void UAirBlueprintLib::moveToZ(UObject* WorldContextObject, float z, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo)
+{
+    if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
+    {
+        float world_to_meters = GetWorldToMetersScale(World->GetWorldSettings());
+        FLatentActionManager& LatentActionManager = World->GetLatentActionManager();
+        if (LatentActionManager.FindExistingAction<FMoveToZTask>(LatentInfo.CallbackTarget, LatentInfo.UUID) == NULL)
+        {
+            LatentActionManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, new FMoveToZTask(LatentInfo, z, velocity, timeout_sec, VehicleName, Branches, world_to_meters));
+        }
+    }
+}
+
+void UAirBlueprintLib::takeoff(UObject* WorldContextObject, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo)
+{
+    if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
+    {
+        FLatentActionManager& LatentActionManager = World->GetLatentActionManager();
+        if (LatentActionManager.FindExistingAction<FTakeoffTask>(LatentInfo.CallbackTarget, LatentInfo.UUID) == NULL)
+        {
+            LatentActionManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, new FTakeoffTask(LatentInfo, timeout_sec, VehicleName, Branches));
+        }
+    }
 }
 
 void UAirBlueprintLib::FollowActor(AActor* follower, const AActor* followee, const FVector& offset, bool fixed_z, float fixed_z_val)

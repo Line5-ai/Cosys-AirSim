@@ -31,6 +31,10 @@
 #include <regex>
 #include "AirBlueprintLib.generated.h"
 
+class NedTransform;
+
+namespace msr { namespace airlib { class MultirotorRpcLibClient; } }
+
 UENUM(BlueprintType)
 enum class LogDebugLevel : uint8
 {
@@ -38,6 +42,13 @@ enum class LogDebugLevel : uint8
     Success UMETA(DisplayName = "Success"),
     Failure UMETA(DisplayName = "Failure"),
     Unimportant UMETA(DisplayName = "Unimportant")
+};
+
+UENUM(BlueprintType)
+enum class EBlueprintResult : uint8
+{
+    Success,
+    Failure
 };
 
 /**
@@ -51,6 +62,7 @@ class UAirBlueprintLib : public UBlueprintFunctionLibrary
 public:
     static void OnBeginPlay();
     static void OnEndPlay();
+    static msr::airlib::MultirotorRpcLibClient* GetClient();
     static void LogMessageString(const std::string& prefix, const std::string& suffix, LogDebugLevel level, float persist_sec = 60);
     UFUNCTION(BlueprintCallable, Category = "airsim | Utils")
     static void LogMessage(const FString& prefix, const FString& suffix, LogDebugLevel level, float persist_sec = 60);
@@ -84,6 +96,25 @@ public:
     static bool loadLevel(UObject* context, const FString& level_name);
     UFUNCTION(BlueprintCallable, Category = "airsim | Utils")
     static bool spawnPlayer(UWorld* context);
+    UFUNCTION(BlueprintCallable, Category = "airsim | Multirotor", meta = (Latent = "", LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", VehicleName = "Player", ExpandEnumAsExecs = "Branches"))
+    static void takeoff(UObject* WorldContextObject, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void moveToPositionRelative(UObject* WorldContextObject, const FVector& position, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void moveToPositionAbsolute(UObject* WorldContextObject, const FVector& position, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void rotateToYaw(UObject* WorldContextObject, float yaw, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void moveToZAbsolute(UObject* WorldContextObject, float z, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+    
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void moveToZRelative(UObject* WorldContextObject, float z, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
+
+    UFUNCTION(BlueprintCallable, Category = "AirSim", meta = (Latent = "", WorldContext = "WorldContextObject", LatentInfo = "LatentInfo", HidePin = "WorldContextObject", ExpandEnumAsExecs = "Branches"))
+    static void moveToPosition(UObject* WorldContextObject, const FVector& position, float velocity, float timeout_sec, const FString& VehicleName, EBlueprintResult& Branches, FLatentActionInfo LatentInfo);
     UFUNCTION(BlueprintPure, Category = "airsim | Utils")
     static TArray<FName> ListWorldsInRegistry();
     static UObject* GetMeshFromRegistry(const std::string& load_object);
@@ -208,6 +239,9 @@ public:
     static void CompressImageArray(int32 width, int32 height, const TArray<FColor>& src, TArray<uint8>& dest);
     static std::vector<msr::airlib::MeshPositionVertexBuffersResponse> GetStaticMeshComponents();
 
+    UFUNCTION(BlueprintCallable, Category = "AirSim")
+    static FString getDebugString();
+
 private:
     template<typename T>
     static void InitializeObjectStencilID(T* mesh, std::map< std::string, int> materialMap, bool ignore_existing = true)
@@ -316,4 +350,5 @@ private:
     static uint32_t flush_on_draw_count_;
 
     static IImageWrapperModule* image_wrapper_module_;
+    static std::unique_ptr<msr::airlib::MultirotorRpcLibClient> AirSimClient;
 };
